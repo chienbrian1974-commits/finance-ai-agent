@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "alphavantage": {
+      "type": "http",
+      "url": "https://mcp.alphavantage.co/mcp"
+    },
+    "fmp": {
+      "type": "http",
+      "url": "https://financialmodelingprep.com/mcp",
+      "headers": {
+        "X-API-Key": "${FMP_API_KEY}"
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+# 機密
+.env
+
+# 環境與快取
+.venv/
+__pycache__/
+*.pyc
+
+# 資料與輸出
+data/raw/
+outputs/
+
+# Claude Code 個人設定
+.claude/settings.local.json
