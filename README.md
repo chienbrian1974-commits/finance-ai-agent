@@ -92,7 +92,7 @@ ua = get_key("SEC_USER_AGENT", required=True)   # 缺值會丟出 MissingKeyErro
 - 還原價／原始價 K 線、日 K 資料表、財報重點（台股季報、美股 10-K 年報）、相關新聞
 - 網址可分享：`?symbol=TW:2330`、`?symbol=US:AAPL`
 - **📚 技術分析教學**：K 線、均線、MACD、RSI、KD、布林通道、成交量、支撐壓力。每一段都有原理、這檔股票的真實數據（規則式解讀）、不同可能性、已驗證事實表、小測驗；另有日／週／月多週期比較，以及這檔股票過去發生類似情況的歷史案例
-- **🤖 AI 家教**（選用）：設定 `GEMINI_API_KEY` 後可請 AI 用初學者的語言解釋；回答中的每個數字與日期都會被查核，對不上資料就不顯示。說明與 Gemini 使用限制見 [docs/AI.md](docs/AI.md)
+- **🤖 AI 家教**（選用、需要密碼）：設定 `GEMINI_API_KEY` 與 `AI_TUTOR_PASSWORD` 後，輸入密碼即可請 AI 用初學者的語言解釋；回答中的每個數字與日期都會被查核，對不上資料就不顯示。說明與 Gemini 使用限制見 [docs/AI.md](docs/AI.md)
 
 這一頁使用新的 Provider 層（`core/providers`）；「儀表板」與「教學」分頁暫時沿用原本的資料流程，之後再逐頁改接。
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from core.access import LOCKOUT_SECONDS, MAX_ATTEMPTS, Gate, configured_password
 from core.ai.llm import get_backend
 from core.ai.tutor import explain
 from core.analysis.technical import TechnicalReport, analyze
@@ -26,7 +27,38 @@ def _facts_table(sheet, ids: list[str] | None = None) -> pd.DataFrame:
                          for f in facts])
 
 
+def _ai_gate() -> bool:
+    """AI 家教需要密碼；其他功能（規則式解說、測驗）不受影響。"""
+    pw = configured_password()
+    if not pw:
+        st.caption("🔒 AI 家教未開放：伺服器沒有設定 AI_TUTOR_PASSWORD。上方依資料產生的解說與測驗都可以正常使用。")
+        return False
+    gate: Gate = st.session_state.setdefault("ai_gate", Gate())
+    if gate.unlocked:
+        return True
+    with st.expander("🔒 AI 家教（需要密碼）"):
+        wait = gate.locked()
+        if wait:
+            st.warning(f"密碼錯誤次數過多，請 {wait / 60:.0f} 分鐘後再試。")
+            return False
+        with st.form("ai_unlock", clear_on_submit=True):
+            entered = st.text_input("密碼", type="password", autocomplete="current-password")
+            submitted = st.form_submit_button("解鎖")
+        if submitted:
+            result = gate.attempt(entered, pw)
+            if result == "ok":
+                st.rerun()
+            elif result == "locked":
+                log.warning("AI 家教密碼連續輸錯，已鎖定 %d 秒", LOCKOUT_SECONDS)
+                st.warning(f"密碼錯誤次數過多，已鎖定 {LOCKOUT_SECONDS // 60} 分鐘。")
+            else:
+                st.error(f"密碼錯誤（還可以再試 {MAX_ATTEMPTS - gate.failures} 次）。")
+    return False
+
+
 def _render_ai(rep: TechnicalReport, section) -> None:
+    if not _ai_gate():
+        return
     backend = get_backend()
     key = f"ai_{rep.instrument.symbol}_{section.key}_{rep.as_of}"
     c1, c2 = st.columns([1, 3])

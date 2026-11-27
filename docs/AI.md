@@ -26,6 +26,19 @@ AI 的回答只要有下列任何一項，就**整段不顯示**：
 
 畫面上，AI 的回答分成三部分顯示：**✅ 已驗證事實**（引用的資料表）、**🤖 AI 解讀**、**❓ 不確定／資料不足**。
 
+## 存取控制：AI 家教需要密碼
+
+- AI 家教只對知道密碼的人開放（`core/access.py`）。規則式解說、測驗等其他功能都是公開的。
+- 伺服器沒有設定 `AI_TUTOR_PASSWORD` 時，AI 家教**停用**（預設關閉，不會意外公開）。
+- 密碼用固定時間比對；同一個瀏覽器連續輸錯 5 次，鎖定 10 分鐘。
+- 解鎖只在當次瀏覽有效，關掉分頁就要重新輸入。
+- 設定位置：本機寫在 `.env`；Streamlit Cloud 寫在 App settings → Secrets：
+
+```toml
+GEMINI_API_KEY = "你的 Gemini Key"
+AI_TUTOR_PASSWORD = "你自己設定的密碼"
+```
+
 ## 抽換 AI 廠商
 
 `core/ai/llm.py` 定義了 `LLMBackend` 介面。目前的實作是 `GeminiBackend`（官方 SDK `google-genai`）。要換廠商時，新增一個 backend，並修改 `get_backend()` 即可。業務邏輯不直接呼叫任何 SDK。
