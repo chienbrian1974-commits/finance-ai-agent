@@ -221,8 +221,12 @@ def render_dashboard() -> None:
     footer_master_note()
 
 
-tab_dash, tab_learn = st.tabs(["📊 儀表板", "🎓 技術分析教學"])
+from research import render_research  # noqa: E402
+
+tab_dash, tab_research, tab_learn = st.tabs(["📊 儀表板", "🔎 個股研究", "🎓 技術分析教學"])
 with tab_dash:
     render_dashboard()
+with tab_research:
+    render_research()
 with tab_learn:
     render_learning(PERIODS)

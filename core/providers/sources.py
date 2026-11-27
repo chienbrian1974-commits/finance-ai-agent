@@ -126,8 +126,11 @@ class FinMindFinancialProvider(FinancialDataProvider):
                 metric, unit = self.METRICS[r["type"]]
                 pe = date.fromisoformat(r["date"])
                 items.append(FinancialItem(pe, f"Q{(pe.month - 1) // 3 + 1}", metric, float(r["value"]), unit, self.name))
+        if not items:
+            why = "ETF 沒有公司財報" if inst.asset_type.startswith("etf") else "FinMind 沒有這檔的財報資料"
+            return Financials(inst, [], self.name, _now(), DataKind.UNAVAILABLE, f"{why}。")
         note = "季度財報數字；單位為新台幣元（EPS 為元/股）。資料授權：非商業用途，需標示來源 FinMind。"
-        return Financials(inst, items, self.name, _now(), DataKind.HISTORICAL if items else DataKind.UNAVAILABLE, note)
+        return Financials(inst, items, self.name, _now(), DataKind.HISTORICAL, note)
 
 
 class FinMindNewsProvider(NewsDataProvider):
