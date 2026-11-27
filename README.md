@@ -13,9 +13,18 @@
 ├── .mcp.json           # Claude Code 專案層級 MCP Server 設定（不含 Key 明文）
 ├── app.py              # 市場儀表板（Streamlit 網頁 App）：儀表板＋技術分析教學兩個分頁
 ├── lessons.py          # 技術分析教學分頁（8 堂課、自動解讀、小測驗）
+├── ui.py               # 兩個分頁共用的介面：選股、資料狀態列
+├── core/               # 跨市場資料層（不依賴 Streamlit）
+│   ├── instruments.py  #   統一資料模型 Instrument、代號解析（代號／名稱）
+│   ├── symbols_update.py # 從官方來源重建代號主檔
+│   ├── marketdata.py   #   抓日 K，產生原始價與還原價
+│   ├── validation.py   #   資料驗證：缺值、盤中、過期（含交易所假日）、異常跳動
+│   └── indicators.py   #   技術指標
+├── data/symbols/       # 代號主檔（證交所、櫃買中心、Nasdaq Trader 官方清單）
+├── tests/              # 離線單元測試（pytest）
 ├── config.py           # 讀取 .env：get_key(name, required=False)
 ├── requirements.txt    # 固定版本號
-├── test_setup.py       # 功能驗證腳本
+├── test_setup.py       # 會連網的環境檢查腳本（不是單元測試）
 ├── docs/API_KEYS.md    # 各 Key 的申請網址與免費額度
 ├── data/raw/           # 原始資料（不進 git）
 └── outputs/            # 圖表等輸出（不進 git）
@@ -69,6 +78,35 @@ ua = get_key("SEC_USER_AGENT", required=True)   # 缺值會丟出 MissingKeyErro
 1. K 線　2. 趨勢、支撐與壓力　3. 移動平均線　4. 成交量　5. RSI　6. MACD　7. 布林通道　8. 綜合分析
 
 每一課都是「觀念 → 怎麼畫 → 用你選的股票示範 → 換你判斷（小測驗）」。趨勢、均線、布林通道的圖表右上角有畫線工具，可以自己畫趨勢線練習。解讀文字是依固定規則自動產生的教學範例，不是投資建議。
+
+## 跨市場資料規則
+
+| | 台股（TW） | 美股（US） |
+|---|---|---|
+| 代號範例 | 2330、6488（上櫃）、00631L、00679B、2881A | AAPL、BRK.B（也可輸入 BRK-B）、SPY |
+| 交易所 | TWSE 上市、TPEX 上櫃 | NASDAQ、NYSE、NYSE Arca、Cboe BZX… |
+| 幣別／時區 | TWD／Asia/Taipei | USD／America/New_York |
+| 交易時段 | 09:00–13:30 | 09:30–16:00 |
+| 交易所行事曆 | XTAI | XNYS |
+
+- 代號一律先查官方主檔（`data/symbols/`），名稱、交易所、類型都來自官方清單；主檔查不到時才改問 Yahoo，並標示「未驗證」。
+- 也可以輸入公司名稱（例如「台積電」），或用 `TW:`、`US:` 指定市場。
+- 圖表和指標預設使用**還原價**（除權息調整），可在側邊欄切換成原始價。
+- 每個頁面都會標示：資料來源、抓取時間（台北時間）、最新 K 棒日期（交易所當地日期）、市場狀態；資料不完整、盤中、過期、異常跳動都會明確提示，不會默默修正或補資料。
+
+更新代號主檔（新上市、下市）：
+
+```bash
+.venv/bin/python -m core.symbols_update
+```
+
+## 單元測試（離線）
+
+```bash
+.venv/bin/python -m pytest
+```
+
+測試涵蓋：台美股 20 種代號寫法的解析、台股代號分類、還原權值、盤中／過期／交易所假日判斷、異常跳動、台北時間顯示。不需要網路。
 
 ## 執行測試
 

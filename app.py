@@ -6,16 +6,16 @@
 from __future__ import annotations
 
 import warnings
-from datetime import datetime
 
 import feedparser
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-import ta
-import yfinance as yf
 from plotly.subplots import make_subplots
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+from core.indicators import enrich
+from ui import footer_master_note, load_prices, pick_instrument, render_status, validate
 
 warnings.filterwarnings("ignore")
 
@@ -32,37 +32,6 @@ st.set_page_config(page_title="市場儀表板", page_icon="📈", layout="wide"
 
 
 # ---- 資料 ----------------------------------------------------------------
-def candidates(raw: str) -> list[str]:
-    """把使用者輸入轉成可能的 yfinance 代號。純數字視為台股（先上市 .TW，再上櫃 .TWO）。"""
-    s = raw.strip().upper()
-    if s.isdigit():
-        return [f"{s}.TW", f"{s}.TWO"]
-    return [s]
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def load_history(raw: str, period: str) -> tuple[str, pd.DataFrame]:
-    for sym in candidates(raw):
-        df = yf.Ticker(sym).history(period=period, auto_adjust=False)
-        df = df.dropna(subset=["Close"])
-        if not df.empty:
-            return sym, df
-    return "", pd.DataFrame()
-
-
-def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    close = df["Close"]
-    df["SMA20"] = close.rolling(20).mean()
-    df["SMA60"] = close.rolling(60).mean()
-    df["RSI14"] = ta.momentum.RSIIndicator(close, window=14).rsi()
-    macd = ta.trend.MACD(close, window_slow=26, window_fast=12, window_sign=9)
-    df["MACD"] = macd.macd()
-    df["Signal"] = macd.macd_signal()
-    df["Hist"] = macd.macd_diff()
-    return df
-
-
 @st.cache_data(ttl=600, show_spinner=False)
 def load_news(symbol: str, n: int = 8) -> list[dict]:
     url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US"
@@ -155,8 +124,12 @@ from lessons import render_learning  # noqa: E402
 with st.sidebar:
     st.header("📈 市場儀表板")
     st.caption("以下設定用在「儀表板」分頁；「技術分析教學」分頁有自己的代號欄位。")
-    raw = st.text_input("股票代號", value="AAPL", help="美股輸入代號（AAPL、NVDA）；台股輸入數字（2330、0050）")
+    raw = st.text_input("股票代號或名稱", value="AAPL",
+                        help="台股：2330、00631L、6488；美股：AAPL、BRK.B、SPY；也可以輸入公司名稱，例如 台積電")
+    dash_inst = pick_instrument(raw, "dash")
     period_label = st.selectbox("期間", list(PERIODS), index=2)
+    adjusted = st.toggle("還原權值（除權息調整）", value=True,
+                         help="開啟：用還原價畫圖與計算指標，除息缺口不會被誤判成下跌（建議）。關閉：顯示交易所實際成交價。")
     show_news = st.toggle("顯示新聞與情緒", value=True)
     st.divider()
     btc = load_btc()
@@ -167,31 +140,34 @@ with st.sidebar:
     if st.button("重新整理資料"):
         st.cache_data.clear()
         st.rerun()
-    st.caption("資料來源：Yahoo Finance、交易所公開 API。僅供學習與研究，不構成投資建議。")
+    st.caption("資料來源：Yahoo Finance、證交所、櫃買中心、Nasdaq Trader、交易所公開 API。僅供學習與研究，不構成投資建議。")
 
 
 def render_dashboard() -> None:
-    if not raw.strip():
-        st.info("請在左側輸入股票代號。")
+    if dash_inst is None:
+        st.info("請在左側輸入股票代號或公司名稱。")
         return
 
     with st.spinner("抓取資料中…"):
-        symbol, hist = load_history(raw, PERIODS[period_label])
-    if hist.empty:
-        st.error(f"找不到「{raw}」的資料。美股請輸入代號（例如 AAPL），台股請輸入數字（例如 2330）。")
+        data = load_prices(dash_inst, PERIODS[period_label])
+    status = validate(data)
+    inst = data.instrument
+    st.header(f"{inst.code} {inst.company_name}".strip())
+    basis = "還原價" if adjusted else "原始價（未還原）"
+    render_status(data, status, basis)
+    if data.empty:
         return
 
-    df = add_indicators(hist)
-    last, prev = df.iloc[-1], df.iloc[-2] if len(df) > 1 else df.iloc[-1]
-    chg = (last["Close"] / prev["Close"] - 1) * 100
-    currency = "TWD" if symbol.endswith((".TW", ".TWO")) else "USD"
-
-    st.header(symbol)
-    st.caption(f"最新交易日 {df.index[-1]:%Y-%m-%d}　·　幣別 {currency}　·　更新於 {datetime.now():%H:%M:%S}")
+    df = enrich(data.adjusted if adjusted else data.raw)
+    raw_last = data.raw.iloc[-1]
+    # 漲跌幅用還原價計算：除息日的漲跌會扣掉配息，和券商以「參考價」計算的方式一致
+    adj = data.adjusted["Close"]
+    chg = (adj.iloc[-1] / adj.iloc[-2] - 1) * 100 if len(adj) > 1 else 0.0
+    last = df.iloc[-1]
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("最新價", f"{last['Close']:,.2f}", f"{chg:+.2f}%", delta_color="inverse")  # 與圖表一致：紅漲綠跌
-    c1.caption("盤中為即時價，收盤後為收盤價；漲跌幅對比前一交易日")
+    c1.metric(f"最新價（{inst.currency}）", f"{raw_last['Close']:,.2f}", f"{chg:+.2f}%", delta_color="inverse")  # 紅漲綠跌
+    c1.caption("盤中尚未收盤，價格會變動" if status.partial else "最新收盤價；漲跌幅對比前一交易日（已扣除除權息）")
     # 狀態說明用 caption，不用 delta（delta 會加上漲跌箭頭，容易誤讀）
     if pd.notna(last["SMA20"]):
         c2.metric("SMA20", f"{last['SMA20']:,.2f}")
@@ -210,20 +186,29 @@ def render_dashboard() -> None:
     else:
         c4.metric("MACD", "資料不足")
 
-    st.plotly_chart(build_chart(df, symbol), width="stretch", theme="streamlit")
-    st.caption("顏色依台股慣例：紅色為上漲、綠色為下跌。均線與指標需要足夠天數才會出現（SMA60 需 60 個交易日）。")
+    st.plotly_chart(build_chart(df, inst.code), width="stretch", theme="streamlit")
+    st.caption(f"顏色依台股慣例：紅色為上漲、綠色為下跌。圖表與指標使用{basis}。"
+               "均線與指標需要足夠天數才會出現（SMA60 需 60 個交易日）。")
+    if not data.events.empty:
+        ev = data.events.copy()
+        ev.index = ev.index.strftime("%Y-%m-%d")
+        with st.expander(f"期間內的除權息／分割事件（{len(ev)} 筆）"):
+            st.dataframe(ev.rename(columns={"Dividends": "現金股利", "Stock Splits": "分割比例"}), width="stretch")
 
     with st.expander("資料表（最近 30 個交易日）"):
         table = df[["Open", "High", "Low", "Close", "Volume", "SMA20", "SMA60", "RSI14", "MACD", "Signal"]].tail(30)
         table.index = table.index.strftime("%Y-%m-%d")
         st.dataframe(table.iloc[::-1].round(2), width="stretch")
+        st.caption(f"價格為{basis}。")
 
     if show_news:
         st.subheader("新聞與情緒")
-        news = load_news(symbol)
+        news = load_news(inst.yahoo)
         if not news:
             st.caption("這個代號目前沒有 Yahoo Finance 新聞。")
         else:
+            if inst.market == "TW":
+                st.caption("台股新聞目前只有 Yahoo Finance 英文來源，數量和相關性有限。")
             scored = [r["情緒"] for r in news if r["情緒"] is not None]
             if scored:
                 avg = sum(scored) / len(scored)
@@ -233,10 +218,11 @@ def render_dashboard() -> None:
                 width="stretch", hide_index=True,
                 column_config={"連結": st.column_config.LinkColumn("連結", display_text="開啟")},
             )
+    footer_master_note()
 
 
 tab_dash, tab_learn = st.tabs(["📊 儀表板", "🎓 技術分析教學"])
 with tab_dash:
     render_dashboard()
 with tab_learn:
-    render_learning(load_history, PERIODS)
+    render_learning(PERIODS)

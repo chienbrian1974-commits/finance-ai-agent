@@ -10,8 +10,10 @@ from typing import Callable
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-import ta
 from plotly.subplots import make_subplots
+
+from core.indicators import enrich
+from ui import footer_master_note, load_prices, pick_instrument, render_status, validate
 
 # 配色與 app.py 一致（台股慣例：紅漲綠跌）
 UP = "#e34948"
@@ -41,21 +43,6 @@ LESSONS = [
 
 
 # ---- 計算 ----------------------------------------------------------------
-def enrich(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    c = df["Close"]
-    for n in (5, 20, 60):
-        df[f"SMA{n}"] = c.rolling(n).mean()
-    df["VOL20"] = df["Volume"].rolling(20).mean()
-    df["RSI14"] = ta.momentum.RSIIndicator(c, window=14).rsi()
-    m = ta.trend.MACD(c, window_slow=26, window_fast=12, window_sign=9)
-    df["MACD"], df["Signal"], df["Hist"] = m.macd(), m.macd_signal(), m.macd_diff()
-    bb = ta.volatility.BollingerBands(c, window=20, window_dev=2)
-    df["BB_up"], df["BB_mid"], df["BB_low"] = bb.bollinger_hband(), bb.bollinger_mavg(), bb.bollinger_lband()
-    df["BB_pct"], df["BB_width"] = bb.bollinger_pband(), bb.bollinger_wband()
-    return df
-
-
 def swings(df: pd.DataFrame, k: int = 5) -> tuple[pd.Series, pd.Series]:
     """波段高低點：某天的最高價是前後 k 天裡最高的，就是波段高點（低點同理）。
     最後 k 天還沒有「後面」可以確認，所以不會被標出來。"""
@@ -189,6 +176,7 @@ def lesson_candle(df: pd.DataFrame, sym: str) -> None:
     demo.update_layout(height=320, xaxis_rangeslider_visible=False, margin=dict(l=10, r=10, t=10, b=10),
                        yaxis=dict(range=[90, 119]))
     st.plotly_chart(demo, width="stretch", theme="streamlit")
+    st.caption("↑ 示意圖：數字是為了說明而虛構的範例，不是任何股票的真實資料。")
 
     st.markdown("### 怎麼看")
     st.markdown("1. 先看**顏色**：紅漲綠跌。\n2. 再看**實體長短**：長代表力道強。\n"
@@ -204,7 +192,8 @@ def lesson_candle(df: pd.DataFrame, sym: str) -> None:
 
     color, kind = classify_candle(last["Open"], last["High"], last["Low"], last["Close"])
     st.info(f"**最新一根（{recent.index[-1]:%m/%d}）**：開 {last['Open']:,.2f}／高 {last['High']:,.2f}／"
-            f"低 {last['Low']:,.2f}／收 {last['Close']:,.2f}\n\n這是一根{color}。{kind}")
+            f"低 {last['Low']:,.2f}／收 {last['Close']:,.2f}\n\n這是一根{color}。{kind}"
+            + ("\n\n⚠️ 這一根是**盤中、尚未收盤**的 K 棒，形狀還會變，收盤後再判斷比較準。" if df.attrs.get("partial") else ""))
 
     rows = []
     for ts, r in recent.tail(10).iloc[::-1].iterrows():
@@ -382,7 +371,8 @@ def lesson_volume(df: pd.DataFrame, sym: str) -> None:
     big_dir = "上漲" if df.loc[big, "Close"] >= df.loc[big, "Open"] else "下跌"
     st.info(f"最新一天成交量是 20 日均量的 **{ratio:.2f} 倍**，價格比前一天{'上漲' if up else '下跌'} → **{verdict}**。\n\n"
             f"期間最大量出現在 {big:%Y-%m-%d}，那天是{big_dir} K。大量常出現在趨勢的起點或轉折點，值得回頭看看當時發生什麼事。")
-    st.caption("如果現在是盤中，最新一天的成交量還在累積，倍數會偏低，收盤後再看比較準。")
+    if df.attrs.get("partial"):
+        st.warning("現在是盤中，最新一天的成交量還在累積，倍數一定偏低；收盤後再看比較準。")
     quiz(f"q4_{sym}", "最新一天的成交量，比 20 日均量多還是少？", ["比較多", "比較少"],
          "比較多" if ratio >= 1 else "比較少", f"最新量 ÷ 20 日均量 = {ratio:.2f}。大於 1 就是比平常多。")
 
@@ -573,25 +563,31 @@ def _go(target: str) -> None:
     st.session_state["lesson"] = target
 
 
-def render_learning(load_history: Callable[[str, str], tuple[str, pd.DataFrame]], periods: dict[str, str]) -> None:
+def render_learning(periods: dict[str, str]) -> None:
     st.header("🎓 技術分析教學")
     st.caption("選一檔股票，照課程順序一步一步學。每一課都用你選的股票的真實資料示範，最後有小測驗。")
 
     c1, c2 = st.columns([2, 1])
-    raw = c1.text_input("練習用的股票代號", value="2330", key="learn_symbol",
-                        help="台股輸入數字（2330、0050），美股輸入代號（AAPL）")
+    raw = c1.text_input("練習用的股票代號或名稱", value="2330", key="learn_symbol",
+                        help="台股：2330、00631L、6488；美股：AAPL、BRK.B；也可以輸入公司名稱，例如 台積電")
     plabel = c2.selectbox("期間", list(periods), index=list(periods).index("1 年") if "1 年" in periods else 0,
                           key="learn_period", help="學趨勢和均線建議用 6 個月到 1 年")
-    if not raw.strip():
-        st.info("請輸入股票代號。")
+    inst = pick_instrument(raw, "learn")
+    if inst is None:
         return
 
     with st.spinner("抓取資料中…"):
-        sym, hist = load_history(raw, periods[plabel])
-    if hist.empty or len(hist) < 30:
-        st.error(f"找不到「{raw}」的資料，或資料太少。台股請輸入數字（例如 2330），美股請輸入代號（例如 AAPL）。")
+        data = load_prices(inst, periods[plabel])
+    status = validate(data)
+    render_status(data, status, "還原價（除權息調整）")
+    if data.empty or not status.ok:
         return
-    df = enrich(hist)
+    if len(data.adjusted) < 30:
+        st.error("這段期間的資料少於 30 個交易日，不足以示範。請把期間拉長。")
+        return
+    df = enrich(data.adjusted)
+    df.attrs["partial"] = status.partial
+    sym = inst.label
 
     lesson = st.radio("課程", LESSONS, key="lesson", horizontal=True)
     st.divider()
@@ -608,3 +604,4 @@ def render_learning(load_history: Callable[[str, str], tuple[str, pd.DataFrame]]
         b2.button(f"下一課：{LESSONS[i + 1]} ➡", width="stretch",
                   on_click=_go, args=(LESSONS[i + 1],))
     st.caption("圖中的解讀是依固定規則自動產生的教學範例，不構成投資建議。")
+    footer_master_note()
