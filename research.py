@@ -19,6 +19,7 @@ from core.providers.base import DataKind, Quote
 from core.providers.registry import financial_provider, news_provider, price_provider
 from core.quality import QualityReport, check
 from core.search import search
+from tutor_ui import render_technical_tutor
 
 UP, DOWN, S1, S2 = "#e34948", "#0ca30c", "#2a78d6", "#eb6834"
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -265,6 +266,10 @@ def render_stock(inst: Instrument) -> None:
             "資料時間": [fmt_time(ts, inst) for ts in t["ts_utc"]],
         }, index=[f"{d:%Y-%m-%d}" for d in t.index])
         st.dataframe(table, width="stretch")
+
+    st.divider()
+    render_technical_tutor(inst)
+    st.divider()
 
     col_f, col_n = st.columns([1.2, 1])
     with col_f:

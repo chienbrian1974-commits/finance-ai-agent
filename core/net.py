@@ -58,6 +58,8 @@ LIMITS: dict[str, Limit] = {
     "yahoo": Limit(0.5),                      # Yahoo：非官方 API，放慢避免被封鎖
     "sec": Limit(0.15),                       # SEC：每秒最多 10 次
     "alphavantage": Limit(12.0, per_window=25, window=86400),  # 免費：每天 25 次
+    # Gemini：官方文件未公布這些模型的免費額度數字，先保守設定每 4 秒 1 次、每天 200 次（整個伺服器共用）
+    "gemini": Limit(4.0, per_window=200, window=86400),
     "nasdaqtrader": Limit(1.0),
 }
 

@@ -14,6 +14,7 @@
 ├── app.py              # 市場儀表板（Streamlit 網頁 App）：儀表板＋技術分析教學兩個分頁
 ├── lessons.py          # 技術分析教學分頁（8 堂課、自動解讀、小測驗）
 ├── research.py         # 「個股研究」分頁：跨市場搜尋 → 個股研究頁（使用 Provider 層）
+├── tutor_ui.py         # 個股研究頁的「技術分析教學」區塊（規則式解說＋AI 家教）
 ├── ui.py               # 儀表板與教學分頁共用的介面：選股、資料狀態列
 ├── core/               # 跨市場資料層（不依賴 Streamlit）
 │   ├── instruments.py  #   統一資料模型 Instrument、代號解析（代號／名稱）
@@ -27,6 +28,8 @@
 │   ├── search.py       #   跨市場搜尋（代號、名稱、市場篩選）
 │   ├── calendars.py    #   交易日曆（台股用 FinMind 交易日清單）
 │   ├── net.py          #   限流、重試、快取、logging（遮蔽密鑰）
+│   ├── analysis/       #   分析模組：technical.py（8 大技術指標、多週期、歷史案例）
+│   ├── ai/             #   AI 服務：facts（事實清單）、guard（數字查核）、tutor（AI 家教）、llm（廠商抽換）
 │   └── config_bridge.py #  從環境變數 / .env 讀 Key（只在伺服器端）
 ├── data/symbols/       # 代號主檔（證交所、櫃買中心、Nasdaq Trader 官方清單）
 ├── tests/              # 離線單元測試（pytest）
@@ -88,6 +91,8 @@ ua = get_key("SEC_USER_AGENT", required=True)   # 缺值會丟出 MissingKeyErro
 - 品質檢查結果，以及和第二來源的收盤價交叉比對（台股：證交所／櫃買中心官方；美股：FinMind）
 - 還原價／原始價 K 線、日 K 資料表、財報重點（台股季報、美股 10-K 年報）、相關新聞
 - 網址可分享：`?symbol=TW:2330`、`?symbol=US:AAPL`
+- **📚 技術分析教學**：K 線、均線、MACD、RSI、KD、布林通道、成交量、支撐壓力。每一段都有原理、這檔股票的真實數據（規則式解讀）、不同可能性、已驗證事實表、小測驗；另有日／週／月多週期比較，以及這檔股票過去發生類似情況的歷史案例
+- **🤖 AI 家教**（選用）：設定 `GEMINI_API_KEY` 後可請 AI 用初學者的語言解釋；回答中的每個數字與日期都會被查核，對不上資料就不顯示。說明與 Gemini 使用限制見 [docs/AI.md](docs/AI.md)
 
 這一頁使用新的 Provider 層（`core/providers`）；「儀表板」與「教學」分頁暫時沿用原本的資料流程，之後再逐頁改接。
 
