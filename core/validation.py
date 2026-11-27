@@ -48,6 +48,12 @@ def _calendar(code: str):
 
 def is_session(inst: Instrument, d: date) -> tuple[bool, bool]:
     """回傳 (是否交易日, 是否有用到行事曆)。超出行事曆涵蓋範圍時只排除週末。"""
+    if inst.market == "TW":
+        from .calendars import tw_trading_days
+
+        tw = tw_trading_days()
+        if tw is not None and tw[0] <= d <= tw[1]:
+            return d in tw[2], True
     cal = _calendar(inst.info.calendar)
     if cal is not None and cal.first_session.date() <= d <= cal.last_session.date():
         return bool(cal.is_session(pd.Timestamp(d))), True

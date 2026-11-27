@@ -19,7 +19,14 @@
 │   ├── symbols_update.py # 從官方來源重建代號主檔
 │   ├── marketdata.py   #   抓日 K，產生原始價與還原價
 │   ├── validation.py   #   資料驗證：缺值、盤中、過期（含交易所假日）、異常跳動
-│   └── indicators.py   #   技術指標
+│   ├── indicators.py   #   技術指標
+│   ├── providers/      #   Provider 層：base（統一介面）、sources（各家 API）、registry（台股／美股組合）
+│   ├── normalize.py    #   各來源 → 統一欄位（股數、成交金額、UTC 時間、時效類別）
+│   ├── quality.py      #   正規化資料的品質檢查
+│   ├── search.py       #   跨市場搜尋（代號、名稱、市場篩選）
+│   ├── calendars.py    #   交易日曆（台股用 FinMind 交易日清單）
+│   ├── net.py          #   限流、重試、快取、logging（遮蔽密鑰）
+│   └── config_bridge.py #  從環境變數 / .env 讀 Key（只在伺服器端）
 ├── data/symbols/       # 代號主檔（證交所、櫃買中心、Nasdaq Trader 官方清單）
 ├── tests/              # 離線單元測試（pytest）
 ├── config.py           # 讀取 .env：get_key(name, required=False)
@@ -100,11 +107,14 @@ ua = get_key("SEC_USER_AGENT", required=True)   # 缺值會丟出 MissingKeyErro
 .venv/bin/python -m core.symbols_update
 ```
 
-## 單元測試（離線）
+## 單元測試
 
 ```bash
-.venv/bin/python -m pytest
+.venv/bin/python -m pytest            # 離線測試（預設）
+.venv/bin/python -m pytest -m live    # 連網整合測試：2330、0050、AAPL、SPY
 ```
+
+資料來源、授權、頻率限制與正規化欄位的說明見 [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)。
 
 測試涵蓋：台美股 20 種代號寫法的解析、台股代號分類、還原權值、盤中／過期／交易所假日判斷、異常跳動、台北時間顯示。不需要網路。
 
