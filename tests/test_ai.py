@@ -106,6 +106,13 @@ def test_tutor_rejects_ungrounded_or_advice(mutate, reason):
     assert not ok and reason in why
 
 
+def test_tutor_allows_the_stock_code_but_not_other_numbers():
+    ok_text = {**GOOD, "beginner_explanation": "2330 台積電的 RSI(14) 目前是 42.8。"}
+    assert review(ok_text, sheet()) == (True, "")
+    bad_text = {**GOOD, "beginner_explanation": "2330 的 RSI 是 2331。"}   # 代號以外的數字仍要查核
+    assert not review(bad_text, sheet())[0]
+
+
 def test_tutor_without_key_is_unavailable_not_invented():
     llm.set_backend(llm.DisabledBackend("伺服器尚未設定 GEMINI_API_KEY"))
     ans = explain("RSI", sheet())

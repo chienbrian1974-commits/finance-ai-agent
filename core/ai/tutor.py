@@ -66,6 +66,10 @@ def review(data: dict, facts: FactSheet) -> tuple[bool, str]:
     unknown = [f for f in data.get("facts_used", []) if f not in facts.facts]
     if unknown:
         return False, f"引用了不存在的事實：{', '.join(unknown[:3])}"
+    # 研究對象的股票代號（例如 2330、00631L）不是資料數字，查核前先移除
+    code = facts.subject.split()[0] if facts.subject.strip() else ""
+    if code:
+        text = re.sub(rf"(?<![\w.]){re.escape(code)}(?![\w.])", " ", text)
     g = check_numbers(text, facts)
     if not g.ok:
         return False, f"出現沒有資料依據的數字：{', '.join(g.unsupported[:5])}"
